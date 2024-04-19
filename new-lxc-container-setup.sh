@@ -19,17 +19,17 @@ configure_ssh() {
     echo "Configuring sudo user and SSH access..."
     read -e -p "Enter the name of the sudo user: " user_name
     lxc exec $1 -- adduser $user_name
- #  read -e -p "Enter the password of the user: " pw
-    lxc exec $1 -- passwd $user_name
     lxc exec $1 -- usermod -aG sudo $user_name
+    echo "Installing and configuring SSH server"
     lxc exec $1 -- apt-get update
     lxc exec $1 -- apt-get install -y openssh-server
     lxc exec $1 -- sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/g' /etc/ssh/sshd_config
-    lxc exec $1 -- mkdir /root/.ssh
-    lxc exec $1 -- chmod 700 /root/.ssh
-    lxc exec $1 -- cp /root/.ssh/authorized_keys /root/.ssh/authorized_keys.bak
-    lxc file push ~/.ssh/id_rsa.pub $1/root/.ssh/authorized_keys
-    lxc exec $1 -- chmod 600 /root/.ssh/authorized_keys
+    echo "Copy ssh public keys"
+    lxc exec $1 -- mkdir /home/$user_name/.ssh
+    lxc exec $1 -- chmod 700 /home/$user_name/.ssh
+    lxc file push ~/.ssh/authorized_keys $1/home/$user_name/.ssh/authorized_keys
+    lxc exec $1 -- chmod 600 /home/$user_name/.ssh/authorized_keys
+    lxc exec $1 -- chown $user_name:$user_name -R /home/$user_name/.ssh
     lxc exec $1 -- systemctl restart ssh
 }
 
@@ -37,10 +37,16 @@ configure_ssh() {
 # Function to install UrBackup client
 install_urbackup_client() {
     echo "Installing UrBackup client..."
-#    lxc exec  $1 -- apt-get update
-#    lxc exec  $1 -- apt-get install -y curl
-    lxc exec $1 -- TF=$(mktemp) && wget "https://hndl.urbackup.org/Client/2.5.25/UrBackup%20Client%20Linux%202.5.25.sh" -O $TF && sudo sh $TF; rm -f $TF
-#   lxc exec  $1 -- sh -c 'TF=`mktemp` && wget "http://asklepios.rosis.local:55414/x?a=download_client&lang=en&clientid=2&authkey=W0qsmuOyrU&os=linux" -O $TF && sudo sh $TF; rm ->
+    lxc exec $1 -- sh -c 'TF=`mktemp` && wget "https://hndl.urbackup.org/Client/2.5.25/UrBackup%20Client%20Linux%202.5.25.sh" -O $TF && sudo sh $TF; rm -f $TF'
+    echo "Adding /etc as Backupdir"
+    lxc exec $1 -- urbackupclientctl add-backupdir -d /etc
+}
+
+
+#Function to install basic tools
+install_basic_tools() {
+    echo "Installing basic tools.."
+    lxc exec $1 -- apt install mc
 
 }
 
@@ -53,8 +59,10 @@ read -p "Enter the name of the container: " container_name
 create_container $container_name
 configure_ssh $container_name
 install_urbackup_client $container_name
+install_basic_tools $container_name
 
 echo "Setup complete for container $container_name."
+lxc list | grep $container_name
 
 
 
